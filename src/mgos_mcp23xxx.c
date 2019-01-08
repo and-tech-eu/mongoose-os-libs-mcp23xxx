@@ -58,7 +58,6 @@ static bool mgos_mcp23xxx_read(struct mgos_mcp23xxx *dev) {
   }
   dev->_state = state;
   dev->_io    = io;
-  mgos_mcp23xxx_print_state(dev);
   return true;
 }
 
@@ -92,10 +91,9 @@ static void mgos_mcp23xxx_irq(int pin, void *arg) {
   if (!dev) {
     return;
   }
-  if (dev->intA_gpio != pin && dev->intB_gpio != pin) {
+  if (dev->int_gpio != pin) {
     return;
   }
-  // mgos_mcp23xxx_print_state(dev);
   prev_state = dev->_state;
   mgos_mcp23xxx_read(dev);
   this_state = dev->_state;
@@ -166,7 +164,7 @@ static void mgos_mcp23xxx_irq(int pin, void *arg) {
   return;
 }
 
-static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t i2caddr, int intA_gpio, int intB_gpio, bool int_mirror, uint8_t num_gpios) {
+static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t i2caddr, int int_gpio, uint8_t num_gpios) {
   struct mgos_mcp23xxx *dev = NULL;
 
   if (!i2c) {
@@ -179,12 +177,10 @@ static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t 
   }
 
   memset(dev, 0, sizeof(struct mgos_mcp23xxx));
-  dev->i2caddr    = i2caddr;
-  dev->i2c        = i2c;
-  dev->intA_gpio  = intA_gpio;
-  dev->intB_gpio  = intB_gpio;
-  dev->int_mirror = int_mirror;
-  dev->num_gpios  = num_gpios;
+  dev->i2caddr   = i2caddr;
+  dev->i2c       = i2c;
+  dev->int_gpio  = int_gpio;
+  dev->num_gpios = num_gpios;
 
   dev->_io = 0x0000;      // Set all pins to OUTPUT
   // Read current IO state, assuming all pins are OUTPUT
@@ -195,33 +191,37 @@ static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t 
   }
 
   // Install interrupt handler, if GPIO pin was specified.
-  if (dev->intA_gpio != -1) {
-    LOG(LL_INFO, ("Installing interrupt handler on GPIO %d", dev->intA_gpio));
-    mgos_gpio_set_mode(dev->intA_gpio, MGOS_GPIO_MODE_INPUT);
-    mgos_gpio_set_pull(dev->intA_gpio, MGOS_GPIO_PULL_UP);
-    mgos_gpio_set_int_handler(dev->intA_gpio, MGOS_GPIO_INT_EDGE_NEG, mgos_mcp23xxx_irq, dev);
-    mgos_gpio_clear_int(dev->intA_gpio);
-    mgos_gpio_enable_int(dev->intA_gpio);
-  }
-  if (dev->intB_gpio != -1) {
-    LOG(LL_INFO, ("Installing interrupt handler on GPIO %d", dev->intB_gpio));
-    mgos_gpio_set_mode(dev->intB_gpio, MGOS_GPIO_MODE_INPUT);
-    mgos_gpio_set_pull(dev->intB_gpio, MGOS_GPIO_PULL_UP);
-    mgos_gpio_set_int_handler(dev->intB_gpio, MGOS_GPIO_INT_EDGE_NEG, mgos_mcp23xxx_irq, dev);
-    mgos_gpio_clear_int(dev->intB_gpio);
-    mgos_gpio_enable_int(dev->intB_gpio);
+  if (dev->int_gpio != -1) {
+    uint8_t val;
+    LOG(LL_INFO, ("Installing interrupt handler on GPIO %d", dev->int_gpio));
+    mgos_gpio_set_mode(dev->int_gpio, MGOS_GPIO_MODE_INPUT);
+    mgos_gpio_set_pull(dev->int_gpio, MGOS_GPIO_PULL_UP);
+    mgos_gpio_set_int_handler(dev->int_gpio, MGOS_GPIO_INT_EDGE_NEG, mgos_mcp23xxx_irq, dev);
+    mgos_gpio_clear_int(dev->int_gpio);
+    mgos_gpio_enable_int(dev->int_gpio);
+
+    // Set IOCON.MIRROR, IOCON.INTPOL
+    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IOCON, 1, (uint8_t *)&val)) {
+      return false;
+    }
+    val |= 0x40;  // MIRROR=1
+    val &= ~0x02; // INTPOL=0
+    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO, 1, (uint8_t *)&val)) {
+      return false;
+    }
   }
   LOG(LL_INFO, ("MCP230%s initialized at I2C 0x%02x", (dev->num_gpios == 8 ? "08" : "17"), dev->i2caddr));
   mgos_mcp23xxx_write(dev);
   return dev;
 }
 
-struct mgos_mcp23xxx *mgos_mcp23017_create(struct mgos_i2c *i2c, uint8_t i2caddr, int intA_gpio, int intB_gpio, bool int_mirror) {
-  return mgos_mcp23xxx_create(i2c, i2caddr, intA_gpio, intB_gpio, int_mirror, 16);
+struct mgos_mcp23xxx *mgos_mcp23017_create(struct mgos_i2c *i2c, uint8_t i2caddr, int int_gpio) {
+  // Set up intA/intB mirroring.
+  return mgos_mcp23xxx_create(i2c, i2caddr, int_gpio, 16);
 }
 
 struct mgos_mcp23xxx *mgos_mcp23008_create(struct mgos_i2c *i2c, uint8_t i2caddr, int int_gpio) {
-  return mgos_mcp23xxx_create(i2c, i2caddr, int_gpio, -1, false, 8);
+  return mgos_mcp23xxx_create(i2c, i2caddr, int_gpio, 8);
 }
 
 bool mgos_mcp23xxx_destroy(struct mgos_mcp23xxx **dev) {
@@ -240,12 +240,68 @@ bool mgos_mcp23xxx_gpio_set_mode(struct mgos_mcp23xxx *dev, int pin, enum mgos_g
   }
   if (mode == MGOS_GPIO_MODE_INPUT) {
     dev->_io |= (1 << pin);
+    // TODO(pim): Must also set INTCON (0 == compare to previous GPIO) and GPINTEN (1)
+    if (dev->num_gpios == 8) {
+      uint8_t val;
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON, 1, (uint8_t *)&val)) {
+        return false;
+      }
+      val &= ~(1 << pin);
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON, 1, (uint8_t *)&val)) {
+        return false;
+      }
+
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+        return false;
+      }
+      val |= 1 << pin;
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+        return false;
+      }
+    } else {
+      uint16_t val;
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+      val &= ~(1 << pin);
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+      val |= 1 << pin;
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+    }
   } else {
     if (!mgos_mcp23xxx_gpio_set_pull(dev, pin, MGOS_GPIO_PULL_NONE)) {
       return false;
     }
+    // Must also clear GPINTEN
+    if (dev->num_gpios == 8) {
+      uint8_t val;
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+        return false;
+      }
+      val &= ~(1 << pin);
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+        return false;
+      }
+    } else {
+      uint16_t val;
+      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+      val &= ~(1 << pin);
+      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+        return false;
+      }
+    }
     dev->_io &= ~(1 << pin);
   }
+
   mgos_mcp23xxx_write(dev);
 
   return true;
@@ -403,6 +459,6 @@ bool mgos_mcp23xxx_gpio_set_button_handler(struct mgos_mcp23xxx *dev, int pin, e
 }
 
 // Mongoose OS library initialization
-bool mgos_mcp23xxx_i2c_init(void) {
+bool mgos_mcp23xxx_init(void) {
   return true;
 }

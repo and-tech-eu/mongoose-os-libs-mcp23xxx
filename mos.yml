@@ -1,6 +1,6 @@
 author: Pim van Pelt <pim@google.com>
 type: lib
-description: Mongoose OS library for PCF857X
+description: Mongoose OS library for MCP23XXX
 version: 1.0
 platforms: [esp8266, esp32]
 
@@ -11,9 +11,9 @@ includes:
   - include
 
 config_schema:
-  - ["pcf857x", "o", {title: "pcf857x settings"}]
-  - ["pcf857x.i2caddr", "i", 0x40, {title: "I2C Address"}]
-  - ["pcf857x.int_gpio", "i", -1, {title: "Interrupt pin"}]
+  - ["mcp23xxx", "o", {title: "mcp23xxx settings"}]
+  - ["mcp23xxx.i2caddr", "i", 0x20, {title: "I2C Address"}]
+  - ["mcp23xxx.int_gpio", "i", -1, {title: "Interrupt pin"}]
 
 libs:
   - origin: https://github.com/mongoose-os-libs/i2c
@@ -22,6 +22,6 @@ tags:
   - c
   - i2c
   - hw
-  - docs:drivers:PCF857X I2C
+  - docs:drivers:MCP23XXX I2C
 
 manifest_version: 2017-09-29

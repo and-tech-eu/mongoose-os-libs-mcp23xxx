@@ -34,7 +34,7 @@ struct mgos_mcp23xxx;
  * pin. Set it to -1 to disable interrupts.
  */
 struct mgos_mcp23xxx *mgos_mcp23008_create(struct mgos_i2c *i2c, uint8_t i2caddr, int int_gpio);
-struct mgos_mcp23xxx *mgos_mcp23017_create(struct mgos_i2c *i2c, uint8_t i2caddr, int intA_gpio, int intB_gpio, bool int_mirror);
+struct mgos_mcp23xxx *mgos_mcp23017_create(struct mgos_i2c *i2c, uint8_t i2caddr, int int_gpio);
 
 /* TODO(pim): SPI
  * struct mgos_mcp23xxx *mgos_mcp23S08_create(struct mgos_spi *spi, uint8_t cs_index, int int_gpio);
@@ -68,6 +68,10 @@ bool mgos_mcp23xxx_gpio_disable_int(struct mgos_mcp23xxx *dev, int pin);
 void mgos_mcp23xxx_gpio_clear_int(struct mgos_mcp23xxx *dev, int pin);
 void mgos_mcp23xxx_gpio_remove_int_handler(struct mgos_mcp23xxx *dev, int pin, mgos_gpio_int_handler_f *old_cb, void **old_arg);
 bool mgos_mcp23xxx_gpio_set_button_handler(struct mgos_mcp23xxx *dev, int pin, enum mgos_gpio_pull_type pull_type, enum mgos_gpio_int_mode int_mode, int debounce_ms, mgos_gpio_int_handler_f cb, void *arg);
+
+
+// Mongoose OS init function.
+bool mgos_mcp23xxx_init(void);
 
 #ifdef __cplusplus
 }

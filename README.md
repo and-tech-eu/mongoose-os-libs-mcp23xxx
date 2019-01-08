@@ -9,11 +9,17 @@ otherwise identical.
 
 ## Implementation details
 
-The MCP230XX is a bi-directional GPIO.  Writes to the ports can change the state
-from high to low.  If the port is high, it is pulled up by a weak current. Each
-pin can be pulled low by an external device, in which case reads from that pin
-return 0. Each pin can be explicitly set as INPUT or OUTPUT pin. For INPUT pins,
+The MCP230XX is a bi-directional GPIO with input pullup capability.
+Each input pin can be explicitly set as INPUT or OUTPUT pin. For INPUT pins,
 the pin can be left floating or pulled up with a 100kOhm internal resistor.
+
+Interrupts are handled with this driver. This allows for callbacks to be set
+for INPUT pin state changes.
+
+**NOTE**: For simplicity reasons, on the MCP23x17 chips, `intA` and `intB`
+are combined, so it does not matter which of the pins are used on the chip,
+any port/pin state change will fire an interrupt, and only one pin needs to
+be used on the MCU to handle all 16 ports.
 
 ## API Description
 
