@@ -220,6 +220,21 @@ bool mgos_mcp23xxx_destroy(struct mgos_mcp23xxx **dev) {
     return false;
   }
 
+  // Disable and remove interrupts
+  if ((*dev)->int_gpio != -1) {
+    uint16_t _val;
+    LOG(LL_INFO, ("Removing interrupt handler on GPIO %d", (*dev)->int_gpio));
+
+    // Read INTF and INTCAP to clear any pending interrupt
+    mgos_i2c_read_reg_n((*dev)->i2c, (*dev)->i2caddr, MGOS_MCP23XXX_REG_INTF * (*dev)->_w, (*dev)->_w, (uint8_t *)&_val);
+    mgos_i2c_read_reg_n((*dev)->i2c, (*dev)->i2caddr, MGOS_MCP23XXX_REG_INTCAP * (*dev)->_w, (*dev)->_w, (uint8_t *)&_val);
+
+    // Remove interrupt handler on MCU
+    mgos_gpio_disable_int((*dev)->int_gpio);
+    mgos_gpio_clear_int((*dev)->int_gpio);
+    mgos_gpio_remove_int_handler((*dev)->int_gpio, NULL, NULL);
+  }
+
   free(*dev);
   *dev = NULL;
   return true;
