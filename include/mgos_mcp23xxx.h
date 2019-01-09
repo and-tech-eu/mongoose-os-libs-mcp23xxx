@@ -50,8 +50,9 @@ struct mgos_mcp23xxx *mgos_mcp23017_create(struct mgos_i2c *i2c, uint8_t i2caddr
 bool mgos_mcp23xxx_destroy(struct mgos_mcp23xxx **dev);
 
 /* Emit a logline with the pin and io register stat
+ * Return true if the driver could read from the chip, false otherwise.
  */
-void mgos_mcp23xxx_print_state(struct mgos_mcp23xxx *dev);
+bool mgos_mcp23xxx_print_state(struct mgos_mcp23xxx *dev);
 
 /* These follow `mgos_gpio.h` definitions. */
 bool mgos_mcp23xxx_gpio_set_mode(struct mgos_mcp23xxx *dev, int pin, enum mgos_gpio_mode mode);

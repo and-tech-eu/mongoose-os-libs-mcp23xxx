@@ -16,69 +16,59 @@
 
 #include "mgos_mcp23xxx_internal.h"
 
-void mgos_mcp23xxx_print_state(struct mgos_mcp23xxx *dev) {
-  uint8_t n;
-  char    s[17], i[17];
-
-  if (!dev) {
-    return;
-  }
-  for (n = 0; n < dev->num_gpios; n++) {
-    s[dev->num_gpios - n - 1] = (dev->_state & (1 << n)) ? '1' : '0';
-    i[dev->num_gpios - n - 1] = (dev->_io & (1 << n)) ? 'I' : 'O';
-  }
-  s[dev->num_gpios] = i[dev->num_gpios] = 0;
-  if (dev->num_gpios == 8) {
-    LOG(LL_INFO, ("state=0x%02x %s; io=0x%02x %s", dev->_state, s, dev->_io, i));
-  } else{
-    LOG(LL_INFO, ("state=0x%04x %s; io=0x%04x %s", dev->_state, s, dev->_io, i));
-  }
-}
-
-static bool mgos_mcp23xxx_read(struct mgos_mcp23xxx *dev) {
-  uint16_t state, io;
+bool mgos_mcp23xxx_print_state(struct mgos_mcp23xxx *dev) {
+  uint8_t  n;
+  uint16_t _gpio = 0, _iodir = 0, _gpinten = 0;
+  char     gpio[17], iodir[17], gpinten[17];
 
   if (!dev) {
     return false;
   }
-  if (dev->num_gpios == 8) {
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO, 1, (uint8_t *)&state)) {
-      return false;
-    }
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR, 1, (uint8_t *)&io)) {
-      return false;
-    }
-  } else {
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * 2, 2, (uint8_t *)&state)) {
-      return false;
-    }
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR * 2, 2, (uint8_t *)&io)) {
-      return false;
-    }
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * dev->_w, dev->_w, (uint8_t *)&_gpio)) {
+    return false;
   }
-  dev->_state = state;
-  dev->_io    = io;
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR * dev->_w, dev->_w, (uint8_t *)&_iodir)) {
+    return false;
+  }
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * dev->_w, dev->_w, (uint8_t *)&_gpinten)) {
+    return false;
+  }
+  for (n = 0; n < dev->num_gpios; n++) {
+    gpio[dev->num_gpios - n - 1]    = (_gpio & (1 << n)) ? '1' : '0';
+    iodir[dev->num_gpios - n - 1]   = (_iodir & (1 << n)) ? 'I' : 'O';
+    gpinten[dev->num_gpios - n - 1] = (_gpinten & (1 << n)) ? '+' : '-';
+  }
+  gpio[dev->num_gpios] = iodir[dev->num_gpios] = gpinten[dev->num_gpios] = 0;
+  if (dev->num_gpios == 8) {
+    LOG(LL_INFO, ("gpio:    0x%02x %s", _gpio, gpio));
+    LOG(LL_INFO, ("iodir:   0x%02x %s", _iodir, iodir));
+    LOG(LL_INFO, ("gpinten: 0x%02x %s", _gpinten, gpinten));
+  } else{
+    LOG(LL_INFO, ("gpio:    0x%04x %s", _gpio, gpio));
+    LOG(LL_INFO, ("iodir:   0x%04x %s", _iodir, iodir));
+    LOG(LL_INFO, ("gpinten: 0x%04x %s", _gpinten, gpinten));
+  }
   return true;
 }
 
-static bool mgos_mcp23xxx_write(struct mgos_mcp23xxx *dev) {
+static bool mgos_mcp23xxx_read(struct mgos_mcp23xxx *dev) {
+  uint16_t _gpio;
+  uint16_t _val;
+
   if (!dev) {
     return false;
   }
-  if (dev->num_gpios == 8) {
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO, 1, (uint8_t *)&dev->_state)) {
-      return false;
-    }
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR, 1, (uint8_t *)&dev->_io)) {
-      return false;
-    }
-  } else {
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * 2, 2, (uint8_t *)&dev->_state)) {
-      return false;
-    }
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR * 2, 2, (uint8_t *)&dev->_io)) {
-      return false;
-    }
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * dev->_w, dev->_w, (uint8_t *)&_gpio)) {
+    return false;
+  }
+  dev->_gpio = _gpio;
+
+  // Flush INTF and INTCAP to ensure interrupts keep firing.
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTF * dev->_w, dev->_w, (uint8_t *)&_val)) {
+    return false;
+  }
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCAP * dev->_w, dev->_w, (uint8_t *)&_val)) {
+    return false;
   }
   return true;
 }
@@ -86,67 +76,63 @@ static bool mgos_mcp23xxx_write(struct mgos_mcp23xxx *dev) {
 static void mgos_mcp23xxx_irq(int pin, void *arg) {
   struct mgos_mcp23xxx *dev = (struct mgos_mcp23xxx *)arg;
   uint8_t  n;
-  uint16_t prev_state, this_state;
+  uint16_t _intf, _intcap, prev_gpio, this_gpio;
 
+  // LOG(LL_DEBUG, ("Interrupt received on %d", pin));
   if (!dev) {
     return;
   }
   if (dev->int_gpio != pin) {
     return;
   }
-  prev_state = dev->_state;
-  mgos_mcp23xxx_read(dev);
-  this_state = dev->_state;
 
-  if (prev_state == this_state) {
+  // Read INTF to see which pin(s) triggered the interrupt
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTF * dev->_w, dev->_w, (uint8_t *)&_intf)) {
     return;
   }
+  // Read INTCAP to see the pin state at interrup ttime
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCAP * dev->_w, dev->_w, (uint8_t *)&_intcap)) {
+    return;
+  }
+  prev_gpio = dev->_gpio;
+  this_gpio = _intcap;
+  // LOG(LL_DEBUG, ("INTF=0x%04x INTCAP=0x%04x Previous GPIO=0x%04x", _intf, _intcap, prev_gpio));
 
   for (n = 0; n < dev->num_gpios; n++) {
-    bool prev_bit  = prev_state & (1 << n);
-    bool this_bit  = this_state & (1 << n);
+    bool this_bit  = this_gpio & (1 << n);
+    bool prev_bit  = prev_gpio & (1 << n);
     bool will_call = false;
 
-    // Do not interrupt for output ports
-    if (!(dev->_io & (1 << n))) {
+    // INTF doesn't signal pin N caused the interrupt
+    if (!(_intf && (1 << n))) {
       continue;
     }
 
     switch (dev->cb[n].mode) {
-    case MGOS_GPIO_INT_EDGE_POS:
-      if (!prev_bit && this_bit) {
-        will_call = true;
-      }
-      break;
-
-    case MGOS_GPIO_INT_EDGE_NEG:
-      if (prev_bit && !this_bit) {
-        will_call = true;
-      }
-      break;
-
-    case MGOS_GPIO_INT_EDGE_ANY:
-      if (prev_bit != this_bit) {
-        will_call = true;
-      }
+    case MGOS_GPIO_INT_LEVEL_LO:
+      will_call = !this_bit;
       break;
 
     case MGOS_GPIO_INT_LEVEL_HI:
-      if (this_bit) {
-        will_call = true;
-      }
+      will_call = this_bit;
       break;
 
-    case MGOS_GPIO_INT_LEVEL_LO:
-      if (!this_bit) {
-        will_call = true;
-      }
+    case MGOS_GPIO_INT_EDGE_POS:
+      will_call = this_bit && !prev_bit;
+      break;
+
+    case MGOS_GPIO_INT_EDGE_NEG:
+      will_call = !this_bit && prev_bit;
+      break;
+
+    case MGOS_GPIO_INT_EDGE_ANY:
+      will_call = (this_bit != prev_bit);
       break;
 
     default:
       will_call = false;
     }
-    // LOG(LL_DEBUG, ("GPIO[%u] prev_bit=%u this_bit=%u will_call=%u", n, prev_bit, this_bit, will_call));
+    // LOG(LL_DEBUG, ("GPIO[%u] this_bit=%u will_call=%u", n, this_bit, will_call));
     if (will_call && dev->cb[n].enabled) {
       dev->cb[n].firing = true;
       dev->cb[n].last   = mg_time();
@@ -158,9 +144,12 @@ static void mgos_mcp23xxx_irq(int pin, void *arg) {
     }
   }
 
-  // Clear the interrupt by reading the state again after T(ir) transpires.
-  mgos_usleep(5);
+  // Re-enable interrupts
+  mgos_gpio_clear_int(dev->int_gpio);
+  mgos_gpio_enable_int(dev->int_gpio);
+  mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IOCON, 1, 1, 0);
   mgos_mcp23xxx_read(dev);
+
   return;
 }
 
@@ -168,6 +157,10 @@ static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t 
   struct mgos_mcp23xxx *dev = NULL;
 
   if (!i2c) {
+    return NULL;
+  }
+
+  if (num_gpios != 8 && num_gpios != 16) {
     return NULL;
   }
 
@@ -181,37 +174,35 @@ static struct mgos_mcp23xxx *mgos_mcp23xxx_create(struct mgos_i2c *i2c, uint8_t 
   dev->i2c       = i2c;
   dev->int_gpio  = int_gpio;
   dev->num_gpios = num_gpios;
+  dev->_w        = dev->num_gpios == 16 ? 2 : 1;
 
-  dev->_io = 0x0000;      // Set all pins to OUTPUT
-  // Read current IO state, assuming all pins are OUTPUT
-  if (!mgos_mcp23xxx_read(dev)) {
-    LOG(LL_ERROR, ("Could not read state from MCP23XXX"));
+  // Read and print current IO state
+  mgos_mcp23xxx_read(dev);
+  if (!mgos_mcp23xxx_print_state(dev)) {
+    LOG(LL_ERROR, ("Could not read current state"));
     free(dev);
     return NULL;
   }
 
   // Install interrupt handler, if GPIO pin was specified.
   if (dev->int_gpio != -1) {
-    uint8_t val;
     LOG(LL_INFO, ("Installing interrupt handler on GPIO %d", dev->int_gpio));
     mgos_gpio_set_mode(dev->int_gpio, MGOS_GPIO_MODE_INPUT);
     mgos_gpio_set_pull(dev->int_gpio, MGOS_GPIO_PULL_UP);
     mgos_gpio_set_int_handler(dev->int_gpio, MGOS_GPIO_INT_EDGE_NEG, mgos_mcp23xxx_irq, dev);
     mgos_gpio_clear_int(dev->int_gpio);
     mgos_gpio_enable_int(dev->int_gpio);
-
-    // Set IOCON.MIRROR, IOCON.INTPOL
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IOCON, 1, (uint8_t *)&val)) {
-      return false;
-    }
-    val |= 0x40;  // MIRROR=1
-    val &= ~0x02; // INTPOL=0
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO, 1, (uint8_t *)&val)) {
-      return false;
-    }
   }
+
+  // In all cases, set IOCON.MIRROR=1, IOCON.INTPOL=0
+  if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IOCON, 1, 1, 0)) {
+    return false;
+  }
+  if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IOCON, 6, 1, 1)) {
+    return false;
+  }
+
   LOG(LL_INFO, ("MCP230%s initialized at I2C 0x%02x", (dev->num_gpios == 8 ? "08" : "17"), dev->i2caddr));
-  mgos_mcp23xxx_write(dev);
   return dev;
 }
 
@@ -238,40 +229,14 @@ bool mgos_mcp23xxx_gpio_set_mode(struct mgos_mcp23xxx *dev, int pin, enum mgos_g
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
   }
+  // IODIR=1
   if (mode == MGOS_GPIO_MODE_INPUT) {
-    dev->_io |= (1 << pin);
-    // TODO(pim): Must also set INTCON (0 == compare to previous GPIO) and GPINTEN (1)
     if (dev->num_gpios == 8) {
-      uint8_t val;
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON, 1, (uint8_t *)&val)) {
-        return false;
-      }
-      val &= ~(1 << pin);
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON, 1, (uint8_t *)&val)) {
-        return false;
-      }
-
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
-        return false;
-      }
-      val |= 1 << pin;
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR, pin, 1, 1)) {
         return false;
       }
     } else {
-      uint16_t val;
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON * 2, 2, (uint8_t *)&val)) {
-        return false;
-      }
-      val &= ~(1 << pin);
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON * 2, 2, (uint8_t *)&val)) {
-        return false;
-      }
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
-        return false;
-      }
-      val |= 1 << pin;
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR * 2, pin, 1, 1)) {
         return false;
       }
     }
@@ -279,30 +244,30 @@ bool mgos_mcp23xxx_gpio_set_mode(struct mgos_mcp23xxx *dev, int pin, enum mgos_g
     if (!mgos_mcp23xxx_gpio_set_pull(dev, pin, MGOS_GPIO_PULL_NONE)) {
       return false;
     }
-    // Must also clear GPINTEN
+
+    // IODIR=1, INTCON=0, GPINTEN=0
     if (dev->num_gpios == 8) {
-      uint8_t val;
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR, pin, 1, 0)) {
         return false;
       }
-      val &= ~(1 << pin);
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, 1, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON, pin, 1, 0)) {
+        return false;
+      }
+      if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, pin, 1, 0)) {
         return false;
       }
     } else {
-      uint16_t val;
-      if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_IODIR * 2, pin, 1, 0)) {
         return false;
       }
-      val &= ~(1 << pin);
-      if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, 2, (uint8_t *)&val)) {
+      if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_INTCON * 2, pin, 1, 0)) {
+        return false;
+      }
+      if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, pin, 1, 0)) {
         return false;
       }
     }
-    dev->_io &= ~(1 << pin);
   }
-
-  mgos_mcp23xxx_write(dev);
 
   return true;
 }
@@ -313,36 +278,28 @@ bool mgos_mcp23xxx_gpio_set_pull(struct mgos_mcp23xxx *dev, int pin, enum mgos_g
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
   }
-  if (pull == MGOS_GPIO_PULL_DOWN) {
+  switch (pull) {
+  case MGOS_GPIO_PULL_DOWN:
     return false;
+
+  case MGOS_GPIO_PULL_UP:
+    gppu = 1;
+    break;
+
+  default:   // NONE
+    gppu = 0;
+    break;
   }
 
   if (dev->num_gpios == 8) {
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU, 1, (uint8_t *)&gppu)) {
+    if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU, pin, 1, gppu)) {
       return false;
     }
   } else {
-    if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU * 2, 2, (uint8_t *)&gppu)) {
+    if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU * 2, pin, 1, gppu)) {
       return false;
     }
   }
-
-  if (pull == MGOS_GPIO_PULL_UP) {
-    gppu |= (1 << pin);
-  } else {
-    gppu &= ~(1 << pin);
-  }
-
-  if (dev->num_gpios == 8) {
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU, 1, (uint8_t *)&gppu)) {
-      return false;
-    }
-  } else {
-    if (!mgos_i2c_write_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPPU * 2, 2, (uint8_t *)&gppu)) {
-      return false;
-    }
-  }
-
   return true;
 }
 
@@ -355,43 +312,54 @@ bool mgos_mcp23xxx_gpio_setup_input(struct mgos_mcp23xxx *dev, int pin, enum mgo
 }
 
 bool mgos_mcp23xxx_gpio_setup_output(struct mgos_mcp23xxx *dev, int pin, bool level) {
-  if (!dev || pin < 0 || pin >= dev->num_gpios) {
-    return false;
-  }
-  dev->_io &= ~(1 << pin);
   mgos_mcp23xxx_gpio_write(dev, pin, level);
-  return true;
+  return mgos_mcp23xxx_gpio_set_mode(dev, pin, MGOS_GPIO_MODE_OUTPUT);
 }
 
 bool mgos_mcp23xxx_gpio_read(struct mgos_mcp23xxx *dev, int pin) {
+  uint16_t _gpio;
+
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
   }
-  mgos_mcp23xxx_read(dev);
-  return (dev->_state & (1 << pin)) > 0;
+  if (!mgos_i2c_read_reg_n(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * dev->_w, dev->_w, (uint8_t *)&_gpio)) {
+    return false;
+  }
+  dev->_gpio = _gpio;
+  return (_gpio & (1 << pin)) > 0;
 }
 
 void mgos_mcp23xxx_gpio_write(struct mgos_mcp23xxx *dev, int pin, bool level) {
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return;
   }
-  if (level) {
-    dev->_state |= (1 << pin);
-  } else {
-    dev->_state &= ~(1 << pin);
-  }
-  mgos_mcp23xxx_write(dev);
 
+  if (dev->num_gpios == 8) {
+    if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO, pin, 1, level)) {
+      return;
+    }
+  } else {
+    if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPIO * 2, pin, 1, level)) {
+      return;
+    }
+  }
+  if (level) {
+    dev->_gpio |= (1 << pin);
+  } else {
+    dev->_gpio &= ~(1 << pin);
+  }
   return;
 }
 
 bool mgos_mcp23xxx_gpio_toggle(struct mgos_mcp23xxx *dev, int pin) {
+  bool level;
+
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
   }
-  dev->_state ^= (1 << pin);
-  mgos_mcp23xxx_write(dev);
-  return (dev->_state & (1 << pin)) > 0;
+  level = mgos_mcp23xxx_gpio_read(dev, pin);
+  mgos_mcp23xxx_gpio_write(dev, pin, !level);
+  return !level;
 }
 
 bool mgos_mcp23xxx_gpio_set_int_handler(struct mgos_mcp23xxx *dev, int pin, enum mgos_gpio_int_mode mode, mgos_gpio_int_handler_f cb, void *arg) {
@@ -402,14 +370,21 @@ bool mgos_mcp23xxx_gpio_set_int_handler(struct mgos_mcp23xxx *dev, int pin, enum
   dev->cb[pin].fn_arg  = arg;
   dev->cb[pin].mode    = mode;
   dev->cb[pin].enabled = true;
-  return true;
-
-  (void)mode;
+  return mgos_mcp23xxx_gpio_enable_int(dev, pin);
 }
 
 bool mgos_mcp23xxx_gpio_enable_int(struct mgos_mcp23xxx *dev, int pin) {
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
+  }
+  if (dev->num_gpios == 8) {
+    if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, pin, 1, true)) {
+      return false;
+    }
+  } else {
+    if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, pin, 1, true)) {
+      return false;
+    }
   }
   dev->cb[pin].enabled = true;
   return true;
@@ -418,6 +393,15 @@ bool mgos_mcp23xxx_gpio_enable_int(struct mgos_mcp23xxx *dev, int pin) {
 bool mgos_mcp23xxx_gpio_disable_int(struct mgos_mcp23xxx *dev, int pin) {
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return false;
+  }
+  if (dev->num_gpios == 8) {
+    if (!mgos_i2c_setbits_reg_b(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN, pin, 1, false)) {
+      return false;
+    }
+  } else {
+    if (!mgos_i2c_setbits_reg_w(dev->i2c, dev->i2caddr, MGOS_MCP23XXX_REG_GPINTEN * 2, pin, 1, false)) {
+      return false;
+    }
   }
   dev->cb[pin].enabled = false;
   return true;
@@ -436,10 +420,11 @@ void mgos_mcp23xxx_gpio_remove_int_handler(struct mgos_mcp23xxx *dev, int pin, m
   if (!dev || pin < 0 || pin >= dev->num_gpios) {
     return;
   }
-  dev->cb[pin].fn      = NULL;
-  dev->cb[pin].fn_arg  = NULL;
-  dev->cb[pin].firing  = false;
-  dev->cb[pin].enabled = false;
+
+  mgos_mcp23xxx_gpio_disable_int(dev, pin);
+  dev->cb[pin].fn     = NULL;
+  dev->cb[pin].fn_arg = NULL;
+  dev->cb[pin].firing = false;
   return;
 
   (void)old_cb;

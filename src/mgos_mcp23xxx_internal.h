@@ -53,10 +53,10 @@ struct mgos_mcp23xxx {
   struct mgos_i2c *       i2c;
   uint8_t                 i2caddr;
 
-  uint16_t                _state;                   // Last read from device
-  uint16_t                _io;                      // each bit signals pin in INPUT (1) or OUTPUT (0)
-  uint8_t                 num_gpios;                // MCP23x08: 8; MCP23x17: 16
-  int                     int_gpio;                 // Interrupt pin from device (MCP23X17 always enables int mirroring)
+  uint8_t                 _w;        // Register width, MCP23x08: 1; MCP23x17: 2;
+  uint16_t                _gpio;     // Previous known state of GPIO pins
+  uint8_t                 num_gpios; // MCP23x08: 8; MCP23x17: 16
+  int                     int_gpio;  // Interrupt pin from device (MCP23X17 always enables int mirroring)
 
   struct mgos_mcp23xxx_cb cb[16];
 };
