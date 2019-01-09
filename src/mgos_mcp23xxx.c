@@ -104,7 +104,7 @@ static void mgos_mcp23xxx_irq(int pin, void *arg) {
     bool will_call = false;
 
     // INTF doesn't signal pin N caused the interrupt
-    if (!(_intf && (1 << n))) {
+    if (!(_intf & (1 << n))) {
       continue;
     }
 
