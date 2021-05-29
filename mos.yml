@@ -16,7 +16,7 @@ config_schema:
   - ["mcp23xxx.int_gpio", "i", -1, {title: "Interrupt pin"}]
 
 libs:
-  - origin: https://github.com/mongoose-os-libs/i2c
+  - location: https://github.com/mongoose-os-libs/i2c
 
 tags:
   - c
